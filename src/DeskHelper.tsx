@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react'
-import { answerFromChunks, type KnowledgeChunk } from './engine/assistant'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRive } from '@rive-app/react-canvas'
+import { answerFromChunks, askModel, retrieveChunks, type KnowledgeChunk } from './engine/assistant'
 import { extractPdfText } from './engine/files'
+import { ErrorBoundary } from './ErrorBoundary'
 import type { Language } from './i18n/copy'
 import type { ExpiryDates, Matches, RequirementsData, RequirementStatus, UploadedPdf } from './types'
 
@@ -16,12 +18,13 @@ interface DeskHelperProps {
 
 export function DeskHelper({ language, visible, data, files, matches, expiryDates, statuses }: DeskHelperProps) {
   const [open, setOpen] = useState(false)
-  const [mode, setMode] = useState<'menu' | 'company' | 'files'>('menu')
+  const [mode, setMode] = useState<'menu' | 'company' | 'files' | 'settings'>('menu')
   const [allowed, setAllowed] = useState(false)
   const [question, setQuestion] = useState('')
   const [reply, setReply] = useState('')
   const [sources, setSources] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
+  const [apiKey, setApiKey] = useState('')
   const text = helperCopy[language]
 
   const companyChunks = useMemo(() => (data ? tenderChunks(data, statuses, expiryDates, language) : []), [data, statuses, expiryDates, language])
@@ -33,9 +36,19 @@ export function DeskHelper({ language, visible, data, files, matches, expiryDate
     setBusy(true)
     try {
       const chunks = mode === 'files' && allowed ? [...companyChunks, ...(await fileChunks(files, matches))] : companyChunks
-      const result = answerFromChunks(question, chunks)
-      setReply(result.answer || text.empty)
-      setSources(result.sources)
+      const notes = retrieveChunks(question, chunks)
+      const local = answerFromChunks(question, chunks)
+      setSources(local.sources.length ? local.sources : notes.map((note) => note.source))
+      if (!apiKey.trim()) {
+        setReply(local.answer || text.empty)
+        return
+      }
+      try {
+        const modelAnswer = await askModel(question, notes, apiKey)
+        setReply(modelAnswer || local.answer || text.empty)
+      } catch {
+        setReply(local.answer ? `${text.modelFailed} ${local.answer}` : text.modelFailed)
+      }
     } finally {
       setBusy(false)
     }
@@ -54,6 +67,18 @@ export function DeskHelper({ language, visible, data, files, matches, expiryDate
               <p>{text.offer}</p>
               <button className="secondary-button compact" onClick={() => { setMode('company'); setReply(''); setSources([]) }}>{text.company}</button>
               <button className="secondary-button compact" onClick={() => { setMode('files'); setReply(''); setSources([]) }}>{text.files}</button>
+              <button className="text-button helper-settings-link" onClick={() => setMode('settings')}>{apiKey ? text.keyReady : text.settings}</button>
+            </div>
+          ) : mode === 'settings' ? (
+            <div className="helper-chat">
+              <button className="text-button" onClick={() => setMode('menu')}>{text.back}</button>
+              <strong>{text.settingsTitle}</strong>
+              <p>{text.keySafety}</p>
+              <label>
+                <span>{text.apiKey}</span>
+                <input type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={text.apiPlaceholder} />
+              </label>
+              {apiKey && <button className="text-button" onClick={() => setApiKey('')}>{text.removeKey}</button>}
             </div>
           ) : (
             <div className="helper-chat">
@@ -69,7 +94,12 @@ export function DeskHelper({ language, visible, data, files, matches, expiryDate
                     <span>{mode === 'files' ? text.filePrompt : text.companyPrompt}</span>
                     <textarea value={question} onChange={(event) => setQuestion(event.target.value)} rows={3} />
                   </label>
+                  <div className="helper-examples">
+                    <span>{text.tryAsking}</span>
+                    {(mode === 'files' ? text.fileExamples : text.companyExamples).map((example) => <button key={example} onClick={() => setQuestion(example)}>{example}</button>)}
+                  </div>
                   <button className="primary-button" onClick={ask} disabled={busy || !data}>{busy ? '…' : text.ask}</button>
+                  <button className="text-button helper-settings-link" onClick={() => setMode('settings')}>{apiKey ? text.keyReady : text.addKey}</button>
                   {reply && <p className="helper-reply">{reply}</p>}
                   {sources.length > 0 && <p className="helper-sources">{text.sources}: {sources.join(', ')}</p>}
                 </>
@@ -79,10 +109,50 @@ export function DeskHelper({ language, visible, data, files, matches, expiryDate
         </section>
       )}
       <button className="helper-launcher" onClick={() => setOpen((current) => !current)} aria-expanded={open}>
-        <span aria-hidden="true">?</span>
-        {text.launcher}
+        <ErrorBoundary fallback={<span aria-hidden="true">?</span>}>
+          <Mascot />
+        </ErrorBoundary>
+        <span className="sr-only">{text.launcher}</span>
       </button>
     </div>
+  )
+}
+
+function Mascot() {
+  const shellRef = useRef<HTMLSpanElement>(null)
+  const { RiveComponent } = useRive({
+    src: `${import.meta.env.BASE_URL}mascot.riv`,
+    artboard: 'SOBO-Idle',
+    stateMachines: 'State Machine',
+    autoplay: true,
+  })
+
+  useEffect(() => {
+    let frame = 0
+    let target = 0
+    let current = 0
+    const point = (event: PointerEvent) => {
+      const rect = shellRef.current?.getBoundingClientRect()
+      if (!rect) return
+      target = Math.max(-7, Math.min(7, ((event.clientX - (rect.left + rect.width / 2)) / window.innerWidth) * 20))
+    }
+    const animate = () => {
+      current += (target - current) * 0.06
+      shellRef.current?.style.setProperty('--buddy-lean', `${current}deg`)
+      frame = requestAnimationFrame(animate)
+    }
+    window.addEventListener('pointermove', point, { passive: true })
+    frame = requestAnimationFrame(animate)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('pointermove', point)
+    }
+  }, [])
+
+  return (
+    <span className="mascot-slot" ref={shellRef} aria-hidden="true">
+      <RiveComponent />
+    </span>
   )
 }
 
@@ -135,6 +205,18 @@ const helperCopy = {
     ask: 'Answer from this workspace',
     empty: 'Nothing in this workspace answers that.',
     sources: 'From',
+    apiKey: 'Optional Gemini key',
+    apiPlaceholder: 'Paste a key, or leave blank',
+    modelFailed: 'The key could not be used. Showing the notes from this browser instead.',
+    settings: 'AI settings',
+    settingsTitle: 'Optional AI connection',
+    keySafety: 'Your key stays only in memory for this tab. It is never saved, logged, or included in generated files. Close or refresh the tab to erase it.',
+    keyReady: 'AI key ready for this tab',
+    removeKey: 'Remove key now',
+    addKey: 'Add an optional Gemini key',
+    tryAsking: 'Try asking',
+    companyExamples: ['What is the submission deadline?', 'Which required documents are still missing?'],
+    fileExamples: ['Summarize the matched documents.', 'Which expiry dates should I check?'],
   },
   bn: {
     launcher: 'সহায়তা',
@@ -151,5 +233,17 @@ const helperCopy = {
     ask: 'এই ওয়ার্কস্পেস থেকে উত্তর',
     empty: 'এই ওয়ার্কস্পেসে এর উত্তর নেই।',
     sources: 'সূত্র',
+    apiKey: 'ঐচ্ছিক Gemini কী',
+    apiPlaceholder: 'কী বসান, না হলে খালি রাখুন',
+    modelFailed: 'কী ব্যবহার করা যায়নি। এই ব্রাউজারের নোট দেখানো হচ্ছে।',
+    settings: 'AI সেটিংস',
+    settingsTitle: 'ঐচ্ছিক AI সংযোগ',
+    keySafety: 'আপনার কী শুধু এই ট্যাবের মেমরিতে থাকে। এটি সংরক্ষণ, লগ বা তৈরি করা ফাইলে যোগ হয় না। ট্যাব বন্ধ বা রিফ্রেশ করলে মুছে যাবে।',
+    keyReady: 'এই ট্যাবের AI কী প্রস্তুত',
+    removeKey: 'এখনই কী মুছুন',
+    addKey: 'ঐচ্ছিক Gemini কী যোগ করুন',
+    tryAsking: 'এভাবে জিজ্ঞাসা করুন',
+    companyExamples: ['জমা দেওয়ার শেষ সময় কখন?', 'কোন আবশ্যিক নথি এখনো বাকি?'],
+    fileExamples: ['মেলানো নথিগুলোর সারাংশ দিন।', 'কোন মেয়াদগুলো যাচাই করা উচিত?'],
   },
 } as const

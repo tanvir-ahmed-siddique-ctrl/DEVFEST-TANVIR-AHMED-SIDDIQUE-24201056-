@@ -13,6 +13,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@rive-app/react-canvas": "^4.36.0",
+    "lucide-react": "^1.52.0",
     "pdf-lib": "latest",
     "pdfjs-dist": "latest",
     "react": "latest",
@@ -28,4 +30,3 @@
     "vitest": "latest"
   }
 }
-

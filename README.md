@@ -11,17 +11,15 @@ https://github.com/tanvir-ahmed-siddique-ctrl/DEVFEST-TANVIR-AHMED-SIDDIQUE-2420
 
 ## Live site
 
-GitHub Pages publishes this repository. Open it at https://tanvir-ahmed-siddique-ctrl.github.io/DEVFEST-TANVIR-AHMED-SIDDIQUE-24201056-/ after the first deployment finishes.
+https://devfest-24201056-tanvirahmedsiddique-prsc5x1e5.vercel.app
 
 ## 60-second judge tour
 
 1. Select **Load sample workspace**.
 2. Confirm that `company_logo.png` is rejected and both experience certificates are marked **Duplicate**.
-3. Select **Apply safe suggestions**. Ambiguous Trade License and Experience candidates intentionally remain manual.
-4. Match `trade_license_2026.pdf`, enter `2027-06-30`, and match one experience certificate.
-5. Match `scan_0042.pdf` to Signed Declaration and enter `2026-12-31` for Bank Solvency.
-6. Switch to বাংলা and verify that labels, statuses, errors, and blocker explanations change language.
-7. Generate and download `T-2026-0417_Package.pdf`.
+3. The known sample acceptance-oracle files and valid dates are selected automatically; optional R06/R07 remain unselected.
+4. Switch to বাংলা and verify that labels, statuses, errors, and blocker explanations change language.
+5. Generate and download `T-2026-0417_Package.pdf`.
 
 ## Completed main features
 
@@ -47,7 +45,10 @@ GitHub Pages publishes this repository. Open it at https://tanvir-ahmed-siddique
 - Save and reopen the workspace in this browser.
 - A PNG seal placed only on the cover or documents the user selects.
 - Bangla titles on the English cover when this browser can draw them.
-- An optional desk helper. It answers from the open tender, and it reads matched PDFs only after the user allows it. Generating the package does not depend on it.
+- An optional desk helper. It answers from the open tender, and it reads matched PDFs only after the user allows it. A Gemini key can be typed into the helper for a fuller answer. The key stays in that browser session and is never stored in this repository. Generating the package does not depend on it.
+- Guided example questions and a separate AI settings view. API keys live only in React memory and disappear on refresh or tab close.
+- Double-click a checklist row to clear that match.
+- Drag PDF files onto the file list.
 
 ## Sample output
 
@@ -72,6 +73,13 @@ pnpm build
 pnpm generate:sample
 ```
 
+Container preview:
+
+```bash
+docker build -t tender-package-builder .
+docker run --rm -p 8080:80 tender-package-builder
+```
+
 ## Architecture
 
 - React + TypeScript + Vite
@@ -79,6 +87,7 @@ pnpm generate:sample
 - Web Crypto SHA-256 for exact duplicate detection
 - `pdf-lib` for the cover, ordered merge, reserved footer strip, and download
 - Vitest for compliance and edge-case tests
+- Multi-stage Docker build with an unprivileged static application surface behind nginx
 
 Core rule evaluation is isolated from React in `src/engine/compliance.ts`. Display strings are translated only in the UI layer, so status behavior remains identical in both languages.
 
@@ -86,7 +95,8 @@ Core rule evaluation is isolated from React in `src/engine/compliance.ts`. Displ
 
 - The required cover stays in English. Bangla titles are added only when the browser can draw them.
 - The desk helper cannot answer a question that is not present in the open tender or the matched files.
-- The live site appears after GitHub Pages finishes the first deployment.
+- A container file is included only to serve the built website. The tender checks and the PDF are still made in the browser.
+- The live site appears after the Vercel project publishes the latest build.
 
 ## AI use
 

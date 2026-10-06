@@ -10,7 +10,9 @@ import { assertFileLimits, FileProcessingError, inspectPdf, type FileErrorCode }
 import { checklistCsv, checklistRows } from './engine/checklist'
 import { canDrawBangla, downloadBytes, downloadText, generatePackagePdf } from './engine/packagePdf'
 import { loadWorkspace, matchesByHash, saveWorkspace } from './engine/session'
+import { CinematicIntro } from './CinematicIntro'
 import { DeskHelper } from './DeskHelper'
+import { ProductGuide } from './ProductGuide'
 import { copy, type Language } from './i18n/copy'
 import type { ExpiryDates, Matches, RequirementStatus, RequirementsData, UploadedPdf } from './types'
 import './styles.css'
@@ -50,6 +52,7 @@ export default function App() {
   const [sealRequirementIds, setSealRequirementIds] = useState<string[]>([])
   const [seal, setSeal] = useState<{ name: string; bytes: Uint8Array } | null>(null)
   const [helperVisible, setHelperVisible] = useState(true)
+  const [overHero, setOverHero] = useState(true)
   const requirementsInput = useRef<HTMLInputElement>(null)
   const documentsInput = useRef<HTMLInputElement>(null)
   const sealInput = useRef<HTMLInputElement>(null)
@@ -67,6 +70,20 @@ export default function App() {
     if (!data) return new Map<string, string>()
     return new Map(files.map((file) => [file.id, suggestRequirement(file.name, data.requirements)]).filter((pair): pair is [string, string] => Boolean(pair[1])))
   }, [data, files])
+
+  useEffect(() => {
+    const updateHeader = () => {
+      const hero = document.querySelector<HTMLElement>('.cinematic')
+      setOverHero(Boolean(hero && window.scrollY < hero.offsetTop + hero.offsetHeight - 90))
+    }
+    updateHeader()
+    window.addEventListener('scroll', updateHeader, { passive: true })
+    window.addEventListener('resize', updateHeader)
+    return () => {
+      window.removeEventListener('scroll', updateHeader)
+      window.removeEventListener('resize', updateHeader)
+    }
+  }, [])
 
   useEffect(() => {
     if (sampleLoadedFromUrl.current || new URLSearchParams(window.location.search).get('sample') !== '1') return
@@ -122,19 +139,37 @@ export default function App() {
         }),
       )
       setBusy(false)
-      await addFilesToEmptyWorkspace(sampleFiles)
+      const accepted = await addFilesToEmptyWorkspace(sampleFiles)
+      const idFor = (name: string) => accepted.find((file) => file.name === name)?.id
+      const sampleMatches: Matches = {}
+      const knownFiles: Record<string, string> = {
+        R01: 'trade_license_2026.pdf',
+        R02: '03_tin_certificate.pdf',
+        R03: '04_vat_certificate.pdf',
+        R04: 'bank_solvency.pdf',
+        R05: 'experience_cert.pdf',
+        R08: '02_technical_proposal.pdf',
+        R09: '01_financial_proposal.pdf',
+        R10: 'scan_0042.pdf',
+      }
+      Object.entries(knownFiles).forEach(([requirementId, fileName]) => {
+        const fileId = idFor(fileName)
+        if (fileId) sampleMatches[requirementId] = fileId
+      })
+      setMatches(sampleMatches)
+      setExpiryDates({ R01: '2027-06-30', R04: '2026-12-31' })
     } catch {
       setBusy(false)
       addNotice('SAMPLE_FAILED')
     }
   }
 
-  async function addFilesToEmptyWorkspace(incoming: File[]) {
+  async function addFilesToEmptyWorkspace(incoming: File[]): Promise<UploadedPdf[]> {
     try {
       assertFileLimits([], incoming)
     } catch (error) {
       if (error instanceof FileProcessingError) addNotice(error.code)
-      return
+      return []
     }
     setBusy(true)
     const results = await Promise.allSettled(incoming.map(inspectPdf))
@@ -145,6 +180,7 @@ export default function App() {
     })
     setFiles(accepted)
     setBusy(false)
+    return accepted
   }
 
   function addNotice(code: FileNotice['code'], fileName?: string) {
@@ -308,7 +344,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
+      <header className={`topbar ${overHero ? 'over-hero' : ''}`}>
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">✓</div>
           <div>
@@ -317,6 +353,10 @@ export default function App() {
           </div>
         </div>
         <div className="header-actions">
+          <nav className="header-nav" aria-label="Primary">
+            <a href="#workspace">{language === 'en' ? 'Workspace' : 'ওয়ার্কস্পেস'}</a>
+            <a href="#faq">{language === 'en' ? 'FAQ' : 'প্রশ্নোত্তর'}</a>
+          </nav>
           <div className="language-switch" aria-label="Language">
             <button className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>{t.english}</button>
             <button className={language === 'bn' ? 'active' : ''} onClick={() => setLanguage('bn')}>{t.bangla}</button>
@@ -326,11 +366,17 @@ export default function App() {
         </div>
       </header>
 
-      <main>
+      <CinematicIntro language={language} />
+      <main id="workspace">
         <section className="intro">
           <p className="eyebrow">{language === 'en' ? 'BID SUBMISSION WORKSPACE' : 'দরপত্র জমাদান ওয়ার্কস্পেস'}</p>
           <h1>{t.appName}</h1>
           <p>{t.purpose}</p>
+          <ul className="trust-row">
+            <li>{language === 'en' ? 'Stays in this browser' : 'এই ব্রাউজারেই থাকে'}</li>
+            <li>{language === 'en' ? 'Checks expiry and duplicates' : 'মেয়াদ ও অনুলিপি যাচাই'}</li>
+            <li>{language === 'en' ? 'Bangla and English' : 'বাংলা ও ইংরেজি'}</li>
+          </ul>
           <div className="intro-actions">
             <button className="primary-button" onClick={() => requirementsInput.current?.click()}>{data ? t.replaceJson : t.loadJson}</button>
             <button className="secondary-button" onClick={loadSample} disabled={busy}>{busy ? '…' : t.loadSample}</button>
@@ -365,8 +411,22 @@ export default function App() {
               </dl>
             </section>
 
+            <ol className="stepper">
+              <li className="done">{language === 'en' ? 'Load' : 'তালিকা'}</li>
+              <li className={files.length ? 'done' : 'current'}>{language === 'en' ? 'Upload' : 'ফাইল'}</li>
+              <li className={Object.keys(matches).length ? 'done' : ''}>{language === 'en' ? 'Match' : 'মিল'}</li>
+              <li className={!blockers.length && Object.keys(matches).length ? 'done' : ''}>{language === 'en' ? 'Generate' : 'তৈরি'}</li>
+            </ol>
+
             <section className="workspace-grid">
-              <div className="panel files-panel">
+              <div
+                className="panel files-panel"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  void addFiles(Array.from(event.dataTransfer.files))
+                }}
+              >
                 <div className="panel-heading">
                   <div><p className="step">01</p><h2>{t.documents}</h2></div>
                   <button className="secondary-button compact" onClick={() => documentsInput.current?.click()} disabled={busy}>＋ {t.upload}</button>
@@ -406,7 +466,7 @@ export default function App() {
                 </div>
                 <div className="requirement-list">
                   {statuses.map(({ requirement, status }) => (
-                    <article className="requirement-row" key={requirement.id}>
+                    <article className="requirement-row" key={requirement.id} onDoubleClick={() => updateMatch(requirement.id, '')} title={language === 'en' ? 'Double-click to clear this match' : 'মিল মুছতে দুইবার চাপুন'}>
                       <div className="requirement-name">
                         <span className="order-number">{String(requirement.order).padStart(2, '0')}</span>
                         <div><strong>{language === 'bn' ? requirement.title_bn : requirement.title_en}</strong><small>{requirement.mandatory ? (language === 'en' ? 'Required' : 'আবশ্যিক') : (language === 'en' ? 'Optional' : 'ঐচ্ছিক')}</small></div>
@@ -471,13 +531,29 @@ export default function App() {
                 <span className="generate-icon" aria-hidden="true">{blockers.length ? '!' : '✓'}</span>
                 <div>
                   <strong>{blockers.length ? t.blockers : t.ready}</strong>
-                  {blockers.length > 0 && <p>{blockers.map(({ requirement, status }) => `${language === 'bn' ? requirement.title_bn : requirement.title_en}: ${t.statuses[status]}`).join(' · ')}</p>}
+                  {blockers.length > 0 && (
+                    <>
+                      <p>{language === 'en' ? `${blockers.length} required item${blockers.length === 1 ? '' : 's'} still need attention. Match the highlighted checklist rows above.` : `আরও ${blockers.length}টি আবশ্যিক আইটেম ঠিক করতে হবে। উপরের চেকলিস্টে চিহ্নিত সারি মিলান।`}</p>
+                      <ul className="blocker-list">
+                        {blockers.map(({ requirement, status }) => <li key={requirement.id}>{language === 'bn' ? requirement.title_bn : requirement.title_en}<span>{t.statuses[status]}</span></li>)}
+                      </ul>
+                    </>
+                  )}
                 </div>
               </div>
-              <button className="generate-button" disabled={blockers.length > 0 || generating} onClick={generate}>{generating ? t.generating : t.generate}</button>
+              <button
+                className="generate-button"
+                disabled={blockers.length > 0 || generating}
+                title={blockers.length ? (language === 'en' ? `Complete ${blockers.length} blocking requirement(s) first` : `আগে ${blockers.length}টি বাধা ঠিক করুন`) : undefined}
+                onClick={generate}
+              >
+                {generating ? t.generating : t.generate}
+                {blockers.length > 0 && <small>{language === 'en' ? `${blockers.length} checks remaining` : `${blockers.length}টি যাচাই বাকি`}</small>}
+              </button>
             </section>
           </>
         )}
+        <ProductGuide language={language} tenderId={data?.tender.tender_id} />
       </main>
       <DeskHelper
         language={language}

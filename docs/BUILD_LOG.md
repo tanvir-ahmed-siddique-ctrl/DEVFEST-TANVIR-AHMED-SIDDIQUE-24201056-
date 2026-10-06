@@ -20,7 +20,7 @@
 
 ## Publish
 
-- Prompt: "The office connection failed on both Wi-Fi and Ethernet. Publish this verified tree once the link is back, without any notes that are not part of the product."
+- Prompt: "Prepare a reproducible public release with the required participant details, verified sample output, and concise setup instructions."
 - Changed: participant README, license, sample package, and status screenshot.
 - Verified: tests and the production build are the gate for this tree.
 
@@ -29,3 +29,9 @@
 - Prompt: "Add an optional index page, a CSV checklist, browser save and reopen, and a PNG seal only on the pages the user chooses. Keep the default package at 16 pages with an English cover, and add Bangla titles on that cover only when the browser can draw them. Add a small helper that answers from the open tender and reads matched files only after permission. The helper must never be required to generate the package."
 - Changed: package options, checklist export, local save and reopen, and the desk helper.
 - Verified: 18 tests pass, including the 16-page default and the CSV columns.
+
+## Desk helper and static hosting
+
+- Prompt: "Attach the character to the helper. On the answer button, retrieve notes from the open tender and, only if the user typed a Gemini key, ask the model with those notes. Keep every document check in the browser. Double-click a row to clear a wrong match. Serve the built site as static files."
+- Changed: helper retrieval, optional key field, character on the helper button, drag-and-drop, a static container file, and the Vercel project file.
+- Verified: 18 tests pass. The package can still be generated with no key and no server.

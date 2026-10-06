@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { answerFromChunks } from '../src/engine/assistant'
+import { answerFromChunks, retrieveChunks } from '../src/engine/assistant'
 import { checklistCsv, checklistRows } from '../src/engine/checklist'
 import { packagePageCount } from '../src/engine/packagePdf'
 import type { RequirementsData } from '../src/types'
@@ -46,6 +46,10 @@ describe('optional package tools', () => {
     ])
     expect(found.answer).toContain('Meghna Tech Solutions Ltd.')
     expect(found.sources).toEqual(['Tender'])
-    expect(answerFromChunks('payroll tax code', found.sources.length ? [{ source: 'Tender', text: 'Bidder: Meghna Tech Solutions Ltd.' }] : []).answer).toBe('')
+    expect(answerFromChunks('payroll tax code', [{ source: 'Tender', text: 'Bidder: Meghna Tech Solutions Ltd.' }]).answer).toBe('')
+    expect(retrieveChunks('bidder', [
+      { source: 'Tender', text: 'Bidder: Meghna Tech Solutions Ltd.' },
+      { source: 'Other', text: 'Printer quantity 8' },
+    ])[0]?.source).toBe('Tender')
   })
 })
