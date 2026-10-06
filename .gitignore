@@ -1,0 +1,14 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+.DS_Store
+*.local
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+tmp/
+AIDevFest-ViveCoding_ProblemStatement.pdf
+AIDevFest-ViveCoding ProblemStatement.pdf
+agent.md/
+
