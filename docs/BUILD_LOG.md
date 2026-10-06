@@ -23,3 +23,9 @@
 - Prompt: "The office connection failed on both Wi-Fi and Ethernet. Publish this verified tree once the link is back, without any notes that are not part of the product."
 - Changed: participant README, license, sample package, and status screenshot.
 - Verified: tests and the production build are the gate for this tree.
+
+## Optional checklist tools
+
+- Prompt: "Add an optional index page, a CSV checklist, browser save and reopen, and a PNG seal only on the pages the user chooses. Keep the default package at 16 pages with an English cover, and add Bangla titles on that cover only when the browser can draw them. Add a small helper that answers from the open tender and reads matched files only after permission. The helper must never be required to generate the package."
+- Changed: package options, checklist export, local save and reopen, and the desk helper.
+- Verified: 18 tests pass, including the 16-page default and the CSV columns.

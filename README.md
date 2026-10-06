@@ -42,6 +42,12 @@ GitHub Pages publishes this repository. Open it at https://tanvir-ahmed-siddique
 - Page thumbnails, including image-only scans.
 - Filename-based auto-match suggestions that refuse ambiguous matches.
 - Built-in sample workspace for quick judging.
+- Optional index page. It stays off unless selected, so the supplied sample package remains 16 pages.
+- Checklist export as CSV.
+- Save and reopen the workspace in this browser.
+- A PNG seal placed only on the cover or documents the user selects.
+- Bangla titles on the English cover when this browser can draw them.
+- An optional desk helper. It answers from the open tender, and it reads matched PDFs only after the user allows it. Generating the package does not depend on it.
 
 ## Sample output
 
@@ -78,8 +84,8 @@ Core rule evaluation is isolated from React in `src/engine/compliance.ts`. Displ
 
 ## Known limitations
 
-- The generated cover is English as required. Bangla cover text is not included.
-- Optional index, signature placement, CSV export, and project save/reopen are not included.
+- The required cover stays in English. Bangla titles are added only when the browser can draw them.
+- The desk helper cannot answer a question that is not present in the open tender or the matched files.
 - The live site appears after GitHub Pages finishes the first deployment.
 
 ## AI use

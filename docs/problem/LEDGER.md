@@ -22,6 +22,9 @@
 | D03 | README and MIT license | DELIVERABLE | repository audit | Done |
 | D04 | Public HTTPS deployment matching final commit | DELIVERABLE | incognito judge path | Not deployed |
 | B01 | Filename auto-match suggestions | BONUS | safe suggestions refuse ambiguous names | Done |
-| B02 | Index page | BONUS | PDF structure test | Not started |
-| B03 | CSV checklist export | BONUS | content test | Not started |
-| B04 | Save and reopen work | BONUS | reload test | Not started |
+| B02 | Index page | BONUS | optional; default package stays 16 pages | Done |
+| B03 | CSV checklist export | BONUS | column test | Done |
+| B04 | Save and reopen work | BONUS | browser storage | Done |
+| B05 | Seal on chosen pages | BONUS | PNG placed only where selected | Done |
+| B06 | Bangla titles on the cover | BONUS | drawn only when the browser font works | Done |
+| B07 | In-browser helper | BONUS | answers from the open workspace; file reading needs permission | Done |

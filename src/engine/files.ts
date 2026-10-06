@@ -62,6 +62,22 @@ export async function inspectPdf(file: File): Promise<UploadedPdf> {
   }
 }
 
+export async function extractPdfText(file: File, maxPages = 3): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const loadingTask = pdfjsLib.getDocument({ data: bytes })
+  const document = await loadingTask.promise
+  const parts: string[] = []
+  const pageLimit = Math.min(document.numPages, maxPages)
+  for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
+    const page = await document.getPage(pageNumber)
+    const content = await page.getTextContent()
+    const text = content.items.map((item) => ('str' in item ? item.str : '')).join(' ').replace(/\s+/g, ' ').trim()
+    if (text) parts.push(text)
+  }
+  await loadingTask.destroy()
+  return parts.join(' ').slice(0, 1600)
+}
+
 export function assertFileLimits(current: UploadedPdf[], incoming: File[]): void {
   if (current.length + incoming.length > MAX_FILES) throw new FileProcessingError('TOO_MANY_FILES')
   const bytes = current.reduce((sum, file) => sum + file.size, 0) + incoming.reduce((sum, file) => sum + file.size, 0)

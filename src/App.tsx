@@ -7,7 +7,10 @@ import {
   suggestRequirement,
 } from './engine/compliance'
 import { assertFileLimits, FileProcessingError, inspectPdf, type FileErrorCode } from './engine/files'
-import { downloadBytes, generatePackagePdf } from './engine/packagePdf'
+import { checklistCsv, checklistRows } from './engine/checklist'
+import { canDrawBangla, downloadBytes, downloadText, generatePackagePdf } from './engine/packagePdf'
+import { loadWorkspace, matchesByHash, saveWorkspace } from './engine/session'
+import { DeskHelper } from './DeskHelper'
 import { copy, type Language } from './i18n/copy'
 import type { ExpiryDates, Matches, RequirementStatus, RequirementsData, UploadedPdf } from './types'
 import './styles.css'
@@ -15,7 +18,7 @@ import './styles.css'
 interface FileNotice {
   id: string
   fileName?: string
-  code: FileErrorCode | 'INVALID_REQUIREMENTS' | 'MATCH_CONFLICT' | 'SAMPLE_FAILED' | 'GENERATION_FAILED'
+  code: FileErrorCode | 'INVALID_REQUIREMENTS' | 'MATCH_CONFLICT' | 'SAMPLE_FAILED' | 'GENERATION_FAILED' | 'SAVED' | 'RESTORED' | 'NOTHING_SAVED' | 'BANGLA_UNAVAILABLE' | 'SEAL_FAILED'
 }
 
 const SAMPLE_FILES = [
@@ -41,8 +44,15 @@ export default function App() {
   const [notices, setNotices] = useState<FileNotice[]>([])
   const [busy, setBusy] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [includeIndex, setIncludeIndex] = useState(false)
+  const [banglaOnCover, setBanglaOnCover] = useState(false)
+  const [sealOnCover, setSealOnCover] = useState(false)
+  const [sealRequirementIds, setSealRequirementIds] = useState<string[]>([])
+  const [seal, setSeal] = useState<{ name: string; bytes: Uint8Array } | null>(null)
+  const [helperVisible, setHelperVisible] = useState(true)
   const requirementsInput = useRef<HTMLInputElement>(null)
   const documentsInput = useRef<HTMLInputElement>(null)
+  const sealInput = useRef<HTMLInputElement>(null)
   const sampleLoadedFromUrl = useRef(false)
   const t = copy[language]
 
@@ -186,13 +196,100 @@ export default function App() {
     if (!data || blockers.length) return
     setGenerating(true)
     try {
-      const bytes = await generatePackagePdf({ data, files, matches, expiryDates })
+      let drawBangla = banglaOnCover
+      if (drawBangla && !(await canDrawBangla())) {
+        drawBangla = false
+        addNotice('BANGLA_UNAVAILABLE')
+      }
+      const bytes = await generatePackagePdf({
+        data,
+        files,
+        matches,
+        expiryDates,
+        includeIndex,
+        banglaOnCover: drawBangla,
+        seal: seal ? { bytes: seal.bytes, onCover: sealOnCover, requirementIds: sealRequirementIds } : undefined,
+      })
       downloadBytes(bytes, `${data.tender.tender_id}_Package.pdf`)
     } catch {
       addNotice('GENERATION_FAILED')
     } finally {
       setGenerating(false)
     }
+  }
+
+  function exportChecklist() {
+    if (!data) return
+    const csv = checklistCsv(checklistRows(
+      data,
+      files,
+      matches,
+      expiryDates,
+      statuses.map((item) => ({ requirementId: item.requirement.id, status: item.status })),
+      language,
+    ))
+    downloadText(csv, `${data.tender.tender_id}_Checklist.csv`)
+  }
+
+  async function persistWorkspace() {
+    if (!data) return
+    try {
+      await saveWorkspace({
+        data,
+        matchesByHash: matchesByHash(matches, new Map(files.map((file) => [file.id, file.hash]))),
+        expiryDates,
+        files: await Promise.all(files.map(async (file) => ({
+          hash: file.hash,
+          name: file.name,
+          type: file.file.type || 'application/pdf',
+          bytes: await file.file.arrayBuffer(),
+        }))),
+        includeIndex,
+        banglaOnCover,
+        sealOnCover,
+        sealRequirementIds,
+        seal: seal ? { name: seal.name, bytes: seal.bytes.buffer.slice(seal.bytes.byteOffset, seal.bytes.byteOffset + seal.bytes.byteLength) as ArrayBuffer } : undefined,
+      })
+      addNotice('SAVED')
+    } catch {
+      addNotice('GENERATION_FAILED')
+    }
+  }
+
+  async function reopenWorkspace() {
+    try {
+      const saved = await loadWorkspace()
+      if (!saved) {
+        addNotice('NOTHING_SAVED')
+        return
+      }
+      const restored = await Promise.all(saved.files.map(async (item) => inspectPdf(new File([item.bytes], item.name, { type: item.type || 'application/pdf' }))))
+      const nextMatches: Matches = {}
+      Object.entries(saved.matchesByHash).forEach(([requirementId, hash]) => {
+        const file = restored.find((item) => item.hash === hash)
+        if (file) nextMatches[requirementId] = file.id
+      })
+      setData(saved.data)
+      setFiles(restored)
+      setMatches(nextMatches)
+      setExpiryDates(saved.expiryDates)
+      setIncludeIndex(saved.includeIndex)
+      setBanglaOnCover(saved.banglaOnCover)
+      setSealOnCover(saved.sealOnCover)
+      setSealRequirementIds(saved.sealRequirementIds)
+      setSeal(saved.seal ? { name: saved.seal.name, bytes: new Uint8Array(saved.seal.bytes) } : null)
+      addNotice('RESTORED')
+    } catch {
+      addNotice('SAMPLE_FAILED')
+    }
+  }
+
+  async function chooseSeal(file: File) {
+    if (file.type !== 'image/png' && !file.name.toLowerCase().endsWith('.png')) {
+      addNotice('SEAL_FAILED', file.name)
+      return
+    }
+    setSeal({ name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) })
   }
 
   function reset() {
@@ -224,6 +321,7 @@ export default function App() {
             <button className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>{t.english}</button>
             <button className={language === 'bn' ? 'active' : ''} onClick={() => setLanguage('bn')}>{t.bangla}</button>
           </div>
+          <button className={`text-button ${helperVisible ? 'active-setting' : ''}`} onClick={() => setHelperVisible((current) => !current)}>{t.helperSetting}</button>
           {data && <button className="text-button" onClick={reset}>{t.reset}</button>}
         </div>
       </header>
@@ -336,6 +434,38 @@ export default function App() {
               </div>
             </section>
 
+            <section className="tools-panel">
+              <h2>{t.tools}</h2>
+              <div className="tool-row">
+                <label className="check-line"><input type="checkbox" checked={includeIndex} onChange={(event) => setIncludeIndex(event.target.checked)} />{t.indexOption}</label>
+                <label className="check-line"><input type="checkbox" checked={banglaOnCover} onChange={(event) => setBanglaOnCover(event.target.checked)} />{t.banglaOption}</label>
+                <button className="secondary-button compact" onClick={exportChecklist}>{t.exportCsv}</button>
+                <button className="secondary-button compact" onClick={persistWorkspace}>{t.saveWork}</button>
+                <button className="secondary-button compact" onClick={reopenWorkspace}>{t.reopenWork}</button>
+              </div>
+              <div className="tool-row">
+                <button className="secondary-button compact" onClick={() => sealInput.current?.click()}>{t.sealLabel}</button>
+                <input ref={sealInput} hidden type="file" accept="image/png,.png" onChange={(event) => event.target.files?.[0] && chooseSeal(event.target.files[0])} />
+                {seal && <span className="seal-name">{seal.name}</span>}
+                {seal && <label className="check-line"><input type="checkbox" checked={sealOnCover} onChange={(event) => setSealOnCover(event.target.checked)} />{t.sealCover}</label>}
+              </div>
+              {seal && (
+                <div className="seal-picks">
+                  <span>{t.sealDocuments}</span>
+                  {statuses.filter((item) => matches[item.requirement.id]).map(({ requirement }) => (
+                    <label className="check-line" key={requirement.id}>
+                      <input
+                        type="checkbox"
+                        checked={sealRequirementIds.includes(requirement.id)}
+                        onChange={(event) => setSealRequirementIds((current) => event.target.checked ? [...current, requirement.id] : current.filter((id) => id !== requirement.id))}
+                      />
+                      {language === 'bn' ? requirement.title_bn : requirement.title_en}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </section>
+
             <section className={`generate-bar ${blockers.length ? 'blocked' : 'ready'}`}>
               <div>
                 <span className="generate-icon" aria-hidden="true">{blockers.length ? '!' : '✓'}</span>
@@ -349,6 +479,15 @@ export default function App() {
           </>
         )}
       </main>
+      <DeskHelper
+        language={language}
+        visible={helperVisible}
+        data={data}
+        files={files}
+        matches={matches}
+        expiryDates={expiryDates}
+        statuses={statuses.map((item) => ({ title: language === 'bn' ? item.requirement.title_bn : item.requirement.title_en, status: item.status }))}
+      />
     </div>
   )
 }
